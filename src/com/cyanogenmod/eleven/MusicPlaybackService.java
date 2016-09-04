@@ -13,6 +13,7 @@
 
 package com.cyanogenmod.eleven;
 
+import android.Manifest.permission;
 import android.annotation.SuppressLint;
 import android.app.AlarmManager;
 import android.app.Notification;
@@ -26,6 +27,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.content.SharedPreferences;
 import android.database.ContentObserver;
 import android.database.Cursor;
@@ -518,6 +520,8 @@ public class MusicPlaybackService extends Service {
      */
     private boolean mShowAlbumArtOnLockscreen;
 
+    private boolean mReadGranted = false;
+
     private ShakeDetector.Listener mShakeDetectorListener=new ShakeDetector.Listener() {
 
         @Override
@@ -552,19 +556,21 @@ public class MusicPlaybackService extends Service {
         mServiceInUse = false;
         saveQueue(true);
 
-        if (mIsSupposedToBePlaying || mPausedByTransientLossOfFocus) {
-            // Something is currently playing, or will be playing once
-            // an in-progress action requesting audio focus ends, so don't stop
-            // the service now.
-            return true;
+        if (mReadGranted) {
+            if (mIsSupposedToBePlaying || mPausedByTransientLossOfFocus) {
+                // Something is currently playing, or will be playing once
+                // an in-progress action requesting audio focus ends, so don't stop
+                // the service now.
+                return true;
 
-            // If there is a playlist but playback is paused, then wait a while
-            // before stopping the service, so that pause/resume isn't slow.
-            // Also delay stopping the service if we're transitioning between
-            // tracks.
-        } else if (mPlaylist.size() > 0 || mPlayerHandler.hasMessages(TRACK_ENDED)) {
-            scheduleDelayedShutdown();
-            return true;
+                // If there is a playlist but playback is paused, then wait a while
+                // before stopping the service, so that pause/resume isn't slow.
+                // Also delay stopping the service if we're transitioning between
+                // tracks.
+            } else if (mPlaylist.size() > 0 || mPlayerHandler.hasMessages(TRACK_ENDED)) {
+                scheduleDelayedShutdown();
+                return true;
+            }
         }
         stopSelf(mServiceStartId);
 
@@ -587,6 +593,14 @@ public class MusicPlaybackService extends Service {
     public void onCreate() {
         if (D) Log.d(TAG, "Creating service");
         super.onCreate();
+
+        if (checkSelfPermission(permission.READ_EXTERNAL_STORAGE) !=
+                PackageManager.PERMISSION_GRANTED) {
+            stopSelf();
+            return;
+        } else {
+            mReadGranted = true;
+        }
 
         mNotificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
@@ -713,6 +727,9 @@ public class MusicPlaybackService extends Service {
     @Override
     public void onDestroy() {
         if (D) Log.d(TAG, "Destroying service");
+        if (!mReadGranted) {
+            return;
+        }
         super.onDestroy();
         // Remove any sound effects
         final Intent audioEffectsIntent = new Intent(
@@ -944,6 +961,9 @@ public class MusicPlaybackService extends Service {
 
     private void scheduleDelayedShutdown() {
         if (D) Log.v(TAG, "Scheduling shutdown in " + IDLE_DELAY + " ms");
+        if (!mReadGranted) {
+            return;
+        }
         mAlarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
                 SystemClock.elapsedRealtime() + IDLE_DELAY, mShutdownIntent);
         mShutdownScheduled = true;
@@ -1584,7 +1604,7 @@ public class MusicPlaybackService extends Service {
      * @param full True if the queue is full
      */
     private void saveQueue(final boolean full) {
-        if (!mQueueIsSaveable) {
+        if (!mQueueIsSaveable || mPreferences == null) {
             return;
         }
 
