@@ -30,8 +30,6 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 
-import junit.framework.Assert;
-
 import com.cyanogenmod.eleven.R;
 import com.cyanogenmod.eleven.cache.ImageWorker.ImageType;
 import com.cyanogenmod.eleven.utils.BitmapWithColors;
@@ -278,7 +276,9 @@ public class LetterTileDrawable extends Drawable {
      * The default is 0.0f.
      */
     public void setOffset(float offset) {
-        Assert.assertTrue(offset >= -0.5f && offset <= 0.5f);
+        if (offset < -0.5f || offset > 0.5f) {
+            throw new AssertionError();
+        }
         mOffset = offset;
     }
 
